@@ -22,6 +22,7 @@ namespace Cosmos
 			GaussianRandomWithMeanOneFilter,
 			LogisticGrowth,
 			LogisticMap,
+			Migration,
 			ProdConsGrowth,
 			Production
 		}
@@ -97,6 +98,12 @@ namespace Cosmos
 			rtr.Add (Name.GaussianProductionWithMeanOneFilter, (float[] args) => {
 				// value = GR(mean, dev)*npersons*dt, args: mean, dev, npersons, dt
 				return rtr [Name.Production] (rtr [Name.GaussianRandomWithMeanOneFilter] (args [0], args [1]), args [2], args [3]);
+			});
+			rtr.Add (Name.Migration, (float[] args) => {
+				// value = a*x*(ec/ic-1)*dt
+				// args: a, x, ec, ic, dt (ec - external consumed resources rate per person, 
+				// ic - internal consumed resources rate per person)
+				return args [0] * args [1] * (args [2] / args [3] - 1) * args [4];
 			});
 
 			rfr = new Dictionary<Name, FunctionRef> ();
