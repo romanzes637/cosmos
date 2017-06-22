@@ -23,10 +23,10 @@ namespace Cosmos
 		{
 			this.a = a;
 		}
-		
+
 		public override void Update (float dt)
 		{
-			Function.mul [Function.Name.ExponentialMap] (ref value, a);
+			Function.rfr [Function.Name.ExponentialMap] (ref value, a);
 		}
 	}
 
@@ -43,7 +43,7 @@ namespace Cosmos
 
 		public override void Update (float dt)
 		{
-			Function.mul [Function.Name.LogisticGrowth] (ref value, a, b, dt);
+			Function.rfr [Function.Name.LogisticGrowth] (ref value, a, b, dt);
 		}
 	}
 
@@ -63,82 +63,123 @@ namespace Cosmos
 		public override void Update (float dt)
 		{
 			float pv = value;
-			Function.mul [Function.Name.DelayedGrowth] (ref value, a, b, pValue, dt);
+			Function.rfr [Function.Name.DelayedGrowth] (ref value, a, b, pValue, dt);
 			pValue = pv;
 		}
 	}
 
-	//	public class ResourcePopulation : Population
-	//	{
-	//		public float previousValue;
-	//		public float deltaTimeConsumed;
-	//		public float deltaTimeProduced;
-	//		public float allProduced;
-	//		public float allConsumed;
-	//		public float deltaTimeGrowth;
-	//		public float allGrowth;
-	//		public List<Resource> resources;
-	//		public List<int> resourcesFunctionsIdxs;
-	//		public List<float> resourcesProductions;
-	//		public List<float> resourcesPersons;
-	//		public float growthA;
-	//		public float consumeMean;
-	//		public float consumeDev;
-	//
-	//		public ResourcePopulation (float value, float consumeMean = 1, float consumeDev = 1f / 3, float growthA = 1) : base (value)
-	//		{
-	//			previousValue = value;
-	//			resources = new List<Resource> ();
-	//			resourcesFunctionsIdxs = new List<int> ();
-	//			resourcesProductions = new List<float> ();
-	//			resourcesPersons = new List<float> ();
-	//			this.growthA = growthA;
-	//			this.consumeMean = consumeMean;
-	//			this.consumeDev = consumeDev;
-	//		}
-	//
-	//		public void AddResource (Resource resource, Function function, float nPersons)
-	//		{
-	//			resources.Add (resource);
-	//			resourcesFunctionsIdxs.Add (resource.AddFunction (function, nPersons));
-	//			resourcesProductions.Add (0);
-	//			resourcesPersons.Add (nPersons);
-	//		}
-	//
-	//		public void UpdateResourceFunction (int resourceIdx, Function function)
-	//		{
-	//			resources [resourceIdx].UpdateFunction (resourcesFunctionsIdxs [resourceIdx], function);
-	//		}
-	//
-	//		public void UpdateResourcePersons (int resourceIdx, float nPersons)
-	//		{
-	//			resourcesPersons [resourceIdx] = nPersons;
-	//			resources [resourceIdx].UpdatePersons (resourcesFunctionsIdxs [resourceIdx], nPersons);
-	//		}
-	//
-	//		public void UpdateResources ()
-	//		{
-	//			for (int i = 0; i < resources.Count; i++) {
-	//				UpdateResourcePersons (i, (float)value / resources.Count);
-	//			}
-	//		}
-	//
-	//		public override void Update (float deltaTime)
-	//		{
-	//			deltaTimeProduced = 0;
-	//			for (int i = 0; i < resources.Count; i++) {
-	//				deltaTimeProduced += -resources [i].GetDeltaTimeValue (resourcesFunctionsIdxs [i]);
-	//			}
-	//			allProduced += deltaTimeProduced;
-	//			deltaTimeConsumed = Function.ret[Function.Name.GaussianProduct](consumeMean, consumeDev, value, deltaTime);
-	//			allConsumed += deltaTimeConsumed;
-	//			allGrowth += growthFunction.Call ();
-	//			previousValue = value;
-	//			Function.mul[Function.Name.ResourceGrowth](ref value, growthA, deltaTimeConsumed, deltaTimeProduced, deltaTime);
-	//			deltaTimeGrowth = value - previousValue;
-	//			if (value < 1) {
-	//				value = 0;
-	//			}
-	//		}
-	//	}
+	public class GaussProdConsPopulation : Population
+	{
+		public float a;
+		public float produced;
+		public float consumed;
+		public float pMean;
+		public float pDev;
+		public float cMean;
+		public float cDev;
+
+		public GaussProdConsPopulation (float value, float a, float pMean, float pDev, float cMean, float cDev) : base (value)
+		{
+			this.a = a;
+			this.pMean = pMean;
+			this.pDev = pDev;
+			this.cMean = cMean;
+			this.cDev = cDev;
+		}
+
+		public override void Update (float dt)
+		{
+			Function.rfr [Function.Name.ProdConsGrowth] (ref value, a, 
+				Function.rtr [Function.Name.GaussianProduction] (pMean, pDev, value, dt), 
+				Function.rtr [Function.Name.GaussianProduction] (cMean, cDev, value, dt), dt);
+			if (value < 1) {
+				value = 0;
+			}
+		}
+	}
+
+	public class GaussProdConsResPopulation : GaussProdConsPopulation
+	{
+		public List<Resource> resources;
+		public List<float> workers;
+		public float nWorkers;
+
+		public GaussProdConsResPopulation (float value, float a, float pMean, float pDev, float cMean, float cDev) : base (value, a, pMean, pDev, cMean, cDev)
+		{
+			resources = new List<Resource> ();
+			workers = new List<float> ();
+			nWorkers = 0;
+		}
+
+		public void SetWorkers (int idx, float n)
+		{
+			float delta = n - workers [idx];
+			if (nWorkers + delta <= value) {
+				workers [idx] = n;
+				nWorkers += delta;
+			}
+		}
+
+		public void AddResource (Resource r)
+		{
+			resources.Add (r);
+			workers.Add (0);
+		}
+
+		public void RemoveResource (int idx)
+		{
+			resources.RemoveAt (idx);
+			workers.RemoveAt (idx);
+		}
+
+		public override void Update (float dt)
+		{
+			// Check nWorkers < value
+			if (nWorkers > value) {
+				float delta = (nWorkers - value);
+				for (int i = 0; i < workers.Count; i++) {
+					if (workers [i] > 0) {
+						if (workers [i] >= delta) {
+							workers [i] -= delta;
+							nWorkers -= delta;
+							break;
+						} else {
+							nWorkers -= workers [i];
+							delta -= workers [i];
+							workers [i] = 0;
+						}
+					}
+				}
+			}
+			// Production
+			produced = 0;
+			for (int i = 0; i < resources.Count; i++) {
+				float p = Function.rtr [Function.Name.GaussianProductionWithMeanOneFilter] (pMean, pDev, workers [i], dt);
+				resources [i].value -= p;
+				if (resources [i].value > 0) {
+					produced += p;
+				} else {
+					produced += p + resources [i].value;
+					resources [i].value = 0;
+					RemoveResource (i);
+				}
+			}
+			// Growth
+			Function.rfr [Function.Name.ProdConsGrowth] (ref value, a, produced, 
+				Function.rtr [Function.Name.GaussianProductionWithMeanOneFilter] (cMean, cDev, value, dt), dt);
+			if (value < 1) {
+				value = 0;
+			}
+		}
+	}
+
+	public class Resource
+	{
+		public float value;
+
+		public Resource (float value)
+		{
+			this.value = value;
+		}
+	}
 }
