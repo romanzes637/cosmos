@@ -86,7 +86,6 @@ namespace Cosmos
 		public float pDev;
 		public float cMean;
 		public float cDev;
-		public float pValue;
 
 		public GaussProdConsPopulation (float value, float a, float pMean, float pDev, float cMean, float cDev) : base (value)
 		{
@@ -95,12 +94,10 @@ namespace Cosmos
 			this.pDev = pDev;
 			this.cMean = cMean;
 			this.cDev = cDev;
-			pValue = value;
 		}
 
 		public override void Update (float dt)
 		{
-			pValue = value;
 			Function.rfr [Function.Name.ProdConsGrowth] (ref value, a, 
 				Function.rtr [Function.Name.GaussianProduction] (pMean, pDev, value, dt), 
 				Function.rtr [Function.Name.GaussianProduction] (cMean, cDev, value, dt), dt);
@@ -128,7 +125,7 @@ namespace Cosmos
 			return nw;
 		}
 
-		public void SetWorkers (int idx, float n)
+		public virtual void SetWorkers (int idx, float n)
 		{
 			float delta = n - workers [idx];
 			if (WorkersCount () + delta <= value) {
@@ -148,7 +145,7 @@ namespace Cosmos
 			workers.RemoveAt (idx);
 		}
 
-		public void UpdateWorkers ()
+		public virtual void CheckPopulationSums ()
 		{
 			float nw = WorkersCount ();
 			if (nw > value) {
@@ -165,10 +162,8 @@ namespace Cosmos
 			}
 		}
 
-		public override void Update (float dt)
+		public virtual void Produce (float dt)
 		{
-			UpdateWorkers ();
-			// Production
 			produced = 0;
 			for (int i = 0; i < resources.Count; i++) {
 				float p = Function.rtr [Function.Name.GaussianProductionWithMeanOneFilter] (pMean, pDev, workers [i], dt);
@@ -181,10 +176,17 @@ namespace Cosmos
 					RemoveResource (i);
 				}
 			}
+		}
+
+		public override void Update (float dt)
+		{
+			// Check Workers
+			CheckPopulationSums ();
+			// Production
+			Produce (dt);
 			// Consumtion
 			consumed = Function.rtr [Function.Name.GaussianProductionWithMeanOneFilter] (cMean, cDev, value, dt);
 			// Growth
-			pValue = value;
 			Function.rfr [Function.Name.ProdConsGrowth] (ref value, a, produced, consumed, dt);
 			CheckExtinction ();
 		}
@@ -203,16 +205,14 @@ namespace Cosmos
 	public class GaussProdConsResMigPopulation : GaussProdConsResPopulation
 	{
 		public float mA;
-		public float cRate;
-		public float nEmigrants;
 		public Dictionary<int, GaussProdConsResMigPopulation> populations;
+		public float pValue;
 
 		public GaussProdConsResMigPopulation (float value, float a, float pMean, float pDev, float cMean, float cDev, float mA) : base (value, a, pMean, pDev, cMean, cDev)
 		{
 			this.mA = mA;
-			cRate = 0;
-			nEmigrants = 0;
 			populations = new Dictionary<int, GaussProdConsResMigPopulation> ();
+			pValue = value;
 		}
 
 		public void AddPopulation (int idx, GaussProdConsResMigPopulation p)
@@ -227,30 +227,110 @@ namespace Cosmos
 
 		public override void Update (float dt)
 		{
+			pValue = value;
 			base.Update (dt);
-			cRate = consumed / pValue;
 		}
 
 		public void Migrate (float dt)
 		{
-			nEmigrants = 0;
-			// Migration
 			foreach (KeyValuePair<int, GaussProdConsResMigPopulation> entry in populations) {
-				float ecRate = entry.Value.consumed / entry.Value.pValue;
-				if (ecRate > cRate) {
-					float emigrants = Function.rtr [Function.Name.Migration] (mA, value, ecRate, cRate, dt);
+				float iConsRate = consumed / pValue;
+				float eConsRate = entry.Value.consumed / entry.Value.pValue;
+				if (eConsRate > iConsRate) {
+					float emigrants = Function.rtr [Function.Name.Migration] (mA, value, eConsRate, iConsRate, dt);
 					if (emigrants < value) {
 						entry.Value.value += emigrants;
 						value -= emigrants;
-						nEmigrants += emigrants;
 					} else {
 						entry.Value.value += value;
-						nEmigrants = value;
 						value = 0;
 						break;
 					}
 				}
 			}
 		}
+	}
+
+	public class GaussProdConsResMigTechPopulation : GaussProdConsResMigPopulation
+	{
+		public float technology;
+		public float pTechnology;
+		public float tA;
+		public float researchers;
+		public float pA;
+		public float rMean;
+		public float rDev;
+		public float rValue;
+		public float prValue;
+
+		public GaussProdConsResMigTechPopulation (float value, float a, float pMean, float pDev, float cMean, float cDev, float mA, float tA, float pA, float rMean, float rDev) : base (value, a, pMean, pDev, cMean, cDev, mA)
+		{
+			technology = 1;
+			pTechnology = technology;
+			this.tA = tA;
+			this.pA = pA;
+			this.rMean = rMean;
+			this.rDev = rDev;
+			rValue = 0;
+			prValue = 0;
+		}
+
+		public override void CheckPopulationSums ()
+		{
+			float sum = WorkersCount () + researchers;
+			if (sum > value) {
+				float delta = sum - value;
+				if (researchers >= delta) {
+					researchers -= delta;
+				} else {
+					delta -= researchers;
+					researchers = 0;
+					for (int i = 0; i < workers.Count; i++) {
+						if (workers [i] >= delta) {
+							workers [i] -= delta;
+							break;
+						} else {
+							delta -= workers [i];
+							workers [i] = 0;
+						}
+					}
+				}
+			}
+		}
+
+		public override void Produce (float dt)
+		{
+			base.Produce (dt);
+			prValue = rValue;
+			rValue = Function.rtr [Function.Name.GaussianProductionWithMeanOneFilter] (rMean, rDev, researchers, dt);
+//			float spentResources = Function.rtr [Function.Name.Production] (rMean, researchers, dt);
+			float spentResources = Function.rtr [Function.Name.Production] (rMean, 1, dt);
+			if (spentResources <= produced) {
+				produced -= spentResources;
+			} else {
+				rValue *= produced / spentResources;
+				spentResources = produced;
+				produced = 0;
+			}
+			Research (dt);
+		}
+
+		public void Research (float dt)
+		{
+			pTechnology = technology;
+			Function.rfr [Function.Name.TechnologyGrowth] (ref technology, tA, dt, rValue);
+			CheckTechMin ();
+			Function.rfr [Function.Name.ProductionRateByTechnologyGrowth] (ref pMean, pA, technology, pTechnology, dt);
+		}
+
+		public bool CheckTechMin ()
+		{
+			if (technology < 1) {
+				technology = 1;
+				return true;
+			}
+			return false;
+		}
+
 	}
 }

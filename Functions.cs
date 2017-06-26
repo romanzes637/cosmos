@@ -24,7 +24,9 @@ namespace Cosmos
 			LogisticMap,
 			Migration,
 			ProdConsGrowth,
-			Production
+			Production,
+			TechnologyGrowth,
+			ProductionRateByTechnologyGrowth
 		}
 
 		public static Dictionary<Name, FunctionRet> rtr;
@@ -101,14 +103,14 @@ namespace Cosmos
 			});
 			rtr.Add (Name.Migration, (float[] args) => {
 				// value = a*x*(ec/ic-1)*dt
-				// args: a, x, ec, ic, dt (ec - external consumed resources rate per person, 
-				// ic - internal consumed resources rate per person)
+				// args: a, x, ec, ic, dt (ec - external population consumed resources rate per person, 
+				// ic - internal population consumed resources rate per person)
 				return args [0] * args [1] * (args [2] / args [3] - 1) * args [4];
 			});
 
 			rfr = new Dictionary<Name, FunctionRef> ();
 			rfr.Add (Name.DelayedGrowth, (ref float value, float[] args) => {
-				// (Hutchinson 1948) value += dx = a*x*(1-px/b)*dt, args: a, b, px, dt ( b - max population, px - previous x)
+				// (Hutchinson 1948) value += dx = a*value*(1-pvalue/b)*dt, args: a, b, px, dt (b - max population, pvalue - previous value)
 				value += args [0] * value * (1 - args [2] / args [1]) * args [3];
 			});
 			rfr.Add (Name.DelayedMap, (ref float value, float[] args) => {
@@ -116,7 +118,7 @@ namespace Cosmos
 				value *= args [0] * (1 - args [1]);
 			});
 			rfr.Add (Name.ExponentialGrowth, (ref float value, float[] args) => {
-				// (Malthus 1798 Fibonacci? 1202) value += dx = a*x*dt, args: a, dt
+				// (Malthus 1798 Fibonacci? 1202) value += dx = a*value*dt, args: a, dt
 				value += args [0] * value * args [1];
 			});
 			rfr.Add (Name.ExponentialMap, (ref float value, float[] args) => {
@@ -124,7 +126,7 @@ namespace Cosmos
 				value *= args [0];
 			});
 			rfr.Add (Name.LogisticGrowth, (ref float value, float[] args) => {
-				// (Verhulst 1845, 1847) value += dx = a*x*(1-x/b)*dt, args: a, b, dt (b - max population)
+				// (Verhulst 1845, 1847) value += dx = a*value*(1-value/b)*dt, args: a, b, dt (b - max population)
 				value += args [0] * value * (1 - value / args [1]) * args [2];
 			});
 			rfr.Add (Name.LogisticMap, (ref float value, float[] args) => {
@@ -132,8 +134,8 @@ namespace Cosmos
 				value *= args [0] * (1 - value);
 			});
 			rfr.Add (Name.ProdConsGrowth, (ref float value, float[] args) => {
-				// value += dx = a*x*(p/c-1)*dt, if (p > c);
-				// value -= dx = a*x*(c/p-1)*dt, if (c > p);
+				// value += dx = a*value*(p/c-1)*dt, if (p > c);
+				// value -= dx = a*value*(c/p-1)*dt, if (c > p);
 				// args: a, p, c, dt (p - produced resources, c - consumed resources)
 				float delta = args [1] - args [2];
 				if (delta > 0) {
@@ -141,6 +143,16 @@ namespace Cosmos
 				} else if (delta < 0) {
 					value -= args [0] * value * (args [2] / args [1] - 1) * args [3];
 				}
+			});
+			rfr.Add (Name.TechnologyGrowth, (ref float value, float[] args) => {
+				// value += dx = -at*value*dt+r
+				// args: at, dt, r (r - researched resources)
+				value += -args [0] * value * args [1] + args [2];
+			});
+			rfr.Add (Name.ProductionRateByTechnologyGrowth, (ref float value, float[] args) => {
+				// value += ap*value*(tech/ptech-1)*dt
+				// args: ap, tech, ptech, dt (tech - technology, ptech - previous technology)
+				value += args [0] * value * (args [1] / args [2] - 1) * args [3];
 			});
 		}
 	}
