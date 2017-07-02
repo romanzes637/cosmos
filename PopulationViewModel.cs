@@ -4,52 +4,85 @@ using UnityEngine;
 
 public class PopulationViewModel : MonoBehaviour
 {
+	public Game game;
+
 	public Cosmos.GaussProdConsResMigTechPopulation population { get; private set; }
 
+	public enum Strategy
+	{
+		Player,
+		MaxGrowth,
+		MaxGrowthMaxConsume
+	}
+
+	public Strategy str;
 	public float initialValue;
 	public float a;
+	public float mA;
+	public float tA;
+	public float pA;
 	public float pMean;
 	public float pDev;
 	public float cMean;
 	public float cDev;
-	public float cRate;
-	public float mA;
-	public float tA;
-	public float pA;
 	public float rMean;
 	public float rDev;
-	public float rValue;
-	public float prValue;
 
-	public List<float> workers;
-	public List<Cosmos.Resource> resources;
-	public float researchers;
-	public float researchers2;
+	public float Value { get { return population.value; } set { population.value = value; } }
 
-	public float value;
-	public float technology;
-	public float pValue;
-	public float pTechnology;
+	public float PValue { get { return population.pValue; } set { population.pValue = value; } }
 
+	public float CMean { get { return population.cMean; } set { population.cMean = value; } }
+
+	public float PMean { get { return population.pMean; } set { population.pMean = value; } }
+
+	public float RMean { get { return population.rMean; } set { population.rMean = value; } }
+
+	public float Researchers { get { return population.researchers; } set { population.researchers = value; } }
+
+	public float Technology { get { return population.technology; } set { population.technology = value; } }
+
+	public float Workers { get { return population.workers [0]; } set { population.workers [0] = value; } }
+
+	public float Resources { get { return population.resources [0].value; } set { population.resources [0].value = value; } }
 
 	LineRenderer lr;
 	List<Vector3> ps;
 	float time;
 
+	void UpdateDeltaTime ()
+	{
+		time += game.deltaTime;
+		ps.Add (new Vector3 (time, Value));
+		lr.positionCount = ps.Count;
+		lr.SetPositions (ps.ToArray ());
+	}
+
+	void UpdateTime ()
+	{
+		if (str == Strategy.Player) {
+		} else if (str == Strategy.MaxGrowth) {
+			SetWorkers (0, Value);
+		} else if (str == Strategy.MaxGrowthMaxConsume) {
+			SetWorkers (0, Value);
+			float maxCMean = CMean;
+			foreach (KeyValuePair<int, PopulationViewModel> entry in game.populations) {
+				if (entry.Value.CMean > maxCMean) {
+					maxCMean = entry.Value.CMean;
+				}
+			}
+			CMean = maxCMean;
+		}
+	}
+
 	// Use this for initialization
 	void Awake ()
 	{
 		population = new Cosmos.GaussProdConsResMigTechPopulation (initialValue, a, pMean, pDev, cMean, cDev, mA, tA, pA, rMean, rDev);
-		workers = population.workers;
-		resources = population.resources;
-		researchers = population.researchers;
-		value = GetValue ();
-		pValue = population.pValue;
-		pTechnology = population.pTechnology;
 
 		time = 0;
 		ps = new List<Vector3> ();
-		ps.Add (new Vector3 (time, GetValue ()));
+		ps.Add (new Vector3 (time, Value));
 		lr = GetComponent<LineRenderer> ();
 
 		Color color = new Color ((float)Cosmos.Global.random.NextDouble (), (float)Cosmos.Global.random.NextDouble (), (float)Cosmos.Global.random.NextDouble ());
@@ -57,60 +90,30 @@ public class PopulationViewModel : MonoBehaviour
 		lr.endColor = color;
 		lr.positionCount = ps.Count;
 		lr.SetPositions (ps.ToArray ());
+
+		Game.onDeltaTimeChanged += UpdateDeltaTime;
+		Game.onTimeChanged += UpdateTime;
 	}
-	
-	// Update is called once per frame
+
 	void Update ()
 	{
 		population.a = a;
-//		population.pMean = pMean;
 		population.pDev = pDev;
-		population.cMean = cMean;
 		population.cDev = cDev;
 		population.mA = mA;
 		population.tA = tA;
 		population.pA = pA;
-		population.rMean = rMean;
 		population.rDev = rDev;
-		population.researchers = researchers;
 	}
 
-	public float GetValue ()
+	public void Growth (float dt)
 	{
-		return population.value;
-	}
-
-	public float GetPreviousValue ()
-	{
-		return population.pValue;
-	}
-
-	public void UpdatePopulation (float dt)
-	{
-//		population.SetWorkers (0, GetValue ());
 		population.Update (dt);
 	}
 
 	public void Migrate (float dt)
 	{
-		cRate = population.consumed / population.pValue;
 		population.Migrate (dt);
-	}
-
-	public void UpdatePlot (float dt)
-	{
-		pMean = population.pMean;
-		rValue = population.rValue;
-		prValue = population.prValue;
-		pValue = population.pValue;
-		technology = population.technology;
-		pTechnology = population.pTechnology;
-		researchers2 = population.researchers;
-		value = GetValue ();
-		time += dt/1000;
-		ps.Add (new Vector3 (time, GetValue ()));
-		lr.positionCount = ps.Count;
-		lr.SetPositions (ps.ToArray ());
 	}
 
 	public void AddResource (Cosmos.Resource r)
